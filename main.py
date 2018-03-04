@@ -44,18 +44,12 @@ def train_model(train_loader, odometrynet, criterion, optimizer, epoch):
 
         print (loss)
 
-def train(datapath, checkpoint_path, epochs, args):
-    global model
-
+def train(odometrynet, datapath, checkpoint_path, epochs, args):
 #    model.train()
     model.training = False
 
     kwargs = {'num_workers': 1, 'pin_memory': True} if torch.cuda.is_available() else {}
     train_loader = torch.utils.data.DataLoader(VisualOdometryDataLoader(datapath, transform=preprocess), batch_size=args.bsize, shuffle=True, **kwargs)
-
-    odometrynet = OdometryNet(model)
-    if torch.cuda.is_available():
-        odometrynet.cuda()
 
     criterion = torch.nn.MSELoss()
     optimizer = optim.SGD(odometrynet.parameters(), lr=args.lr, momentum=args.momentum)
@@ -70,12 +64,11 @@ def train(datapath, checkpoint_path, epochs, args):
 #        best_acc = max(acc, best_acc)
         state = {
             'epoch': epoch + 1,
-            'tripletnet_state_dict': odometrynet.state_dict(),
             'state_dict': odometrynet.state_dict(),
         }
         torch.save(state, os.path.join(checkpoint_path, "checkpoint_{}.pth".format(epoch)))
 
-def test(datapath, preprocess):
+def test(odometrynet, datapath, preprocess):
     model.eval()
     model.training = False
 
@@ -127,6 +120,7 @@ if __name__ == "__main__":
     parser.add_argument('--epsilon', default=50000, type=int, help='linear decay of exploration policy')
     parser.add_argument('--checkpoint_path', default=None, type=str, help='Checkpoint path')
     parser.add_argument('--checkpoint', default=None, type=str, help='Checkpoint')
+    parser.add_argument('--place_checkpoint', default=None, type=str, help='Place Checkpoint')
     args = parser.parse_args()
 
     normalize = transforms.Normalize(
@@ -142,17 +136,22 @@ if __name__ == "__main__":
         normalize
     ])
 
-    if args.checkpoint is not None:
-        checkpoint = torch.load(args.checkpoint)
-        model.load_state_dict(checkpoint['state_dict'])
-
+    place_checkpoint = torch.load(args.place_checkpoint)
+    model.load_state_dict(place_checkpoint['state_dict'])
     if torch.cuda.is_available():
         model.cuda()
 
+    odometrynet = OdometryNet(model)
+    if args.checkpoint is not None:
+        checkpoint = torch.load(args.checkpoint)
+        odometrynet.load_state_dict(checkpoint['state_dict'])
+    if torch.cuda.is_available():
+        odometrynet.cuda()
+
     args = parser.parse_args()
     if args.mode == 'train':
-        train(args.datapath, args.checkpoint_path, args.train_iter, args)
+        train(odometrynet, args.datapath, args.checkpoint_path, args.train_iter, args)
     elif args.mode == 'test':
-        test(args.datapath, preprocess)
+        test(odometrynet, args.datapath, preprocess)
     else:
         raise RuntimeError('undefined mode {}'.format(args.mode))
