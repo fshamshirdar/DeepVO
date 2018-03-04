@@ -16,42 +16,57 @@ class VisualOdometryDataLoader(torch.utils.data.Dataset):
     def __init__(self, datapath, transform=None,
                  loader=default_image_loader):
         self.base_path = datapath
-        self.sequence = '01'
-        self.sequence_path = os.path.join(self.base_path, 'sequences', self.sequence)
-        self.pose_path = os.path.join(self.base_path, 'poses')
+        # self.sequences = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21']
+        self.sequences = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10']
 
-        self.timestamp = self.load_timestamps()
-        self.poses = self.load_poses(self.sequence)
+        # self.timestamps = self.load_timestamps()
+        self.size = 0
+        self.sizes = []
+        self.poses = self.load_poses()
 
         self.transform = transform
         self.loader = loader
-        self.size = len(self.timestamp)
 
-    def load_poses(self, sequence):
-        with open(os.path.join(self.base_path, 'poses/',  sequence + '.txt')) as f:
-            poses = np.array([[float(x) for x in line.split()] for line in f], dtype=np.float32)
-        return poses
+    def load_poses(self):
+        all_poses = []
+        for sequence in self.sequences:
+            with open(os.path.join(self.base_path, 'poses/',  sequence + '.txt')) as f:
+                poses = np.array([[float(x) for x in line.split()] for line in f], dtype=np.float32)
+                all_poses.append(poses)
 
-    def load_timestamps(self):
-        timestamp_file = os.path.join(self.sequence_path, 'times.txt')
+                self.size = self.size + len(poses)
+                self.sizes.append(len(poses))
+        return all_poses
 
-        # Read and parse the timestamps
-        timestamps = []
-        with open(timestamp_file, 'r') as f:
-            for line in f.readlines():
-                t = datetime.timedelta(seconds=float(line))
-                timestamps.append(t)
-        return timestamps
+    """ 
+    def load_timestamps(self, sequence_path):
+        for sequence in self.sequences:
+            timestamp_file = os.path.join(self.sequence_path, 'times.txt')
 
-    def get_image(self, index):
-        image_path = os.path.join(self.sequence_path, 'image_2', '%06d' % index + '.png')
+            # Read and parse the timestamps
+            timestamps = []
+            with open(timestamp_file, 'r') as f:
+                for line in f.readlines():
+                    t = datetime.timedelta(seconds=float(line))
+                    timestamps.append(t)
+            return timestamps
+    """
+
+    def get_image(self, sequence, index):
+        image_path = os.path.join(self.base_path, 'sequences', sequence, 'image_2', '%06d' % index + '.png')
         return self.loader(image_path)
 
     def __getitem__(self, index):
-        # img1 = self.loader(os.path.join(self.base_path, anchor_data_index, anchor_path))
-        img1 = self.get_image(index)
-        img2 = self.get_image(index+1)
-        odom = self.get_ground_6d_poses(self.poses[index])
+        sequence = 0
+        for size in self.sizes:
+            if index < size-1:
+                break
+            index = index - (size-1)
+            sequence = sequence + 1
+
+        img1 = self.get_image(self.sequences[sequence], index)
+        img2 = self.get_image(self.sequences[sequence], index+1)
+        odom = self.get_ground_6d_poses(self.poses[sequence][index])
         if self.transform is not None:
             img1 = self.transform(img1)
             img2 = self.transform(img2)
@@ -59,7 +74,7 @@ class VisualOdometryDataLoader(torch.utils.data.Dataset):
         return img1, img2, odom
 
     def __len__(self):
-        return self.size-1
+        return self.size-len(self.sequences)
 
     def isRotationMatrix(self, R):
         """ Checks if a matrix is a valid rotation matrix
