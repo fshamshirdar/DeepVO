@@ -59,16 +59,22 @@ class VisualOdometryDataLoader(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         sequence = 0
+        sequence_size = 0
         for size in self.sizes:
             if index < size-1:
+                sequence_size = size
                 break
             index = index - (size-1)
             sequence = sequence + 1
 
+        next_index = random.randint(index-10,index+10)
+        if next_index > size-1 or next_index < 0:
+            next_index = index+1
+
         img1 = self.get_image(self.sequences[sequence], index)
-        img2 = self.get_image(self.sequences[sequence], index+1)
+        img2 = self.get_image(self.sequences[sequence], next_index)
         pose1 = self.get_ground_6d_poses(self.poses[sequence][index])
-        pose2 = self.get_ground_6d_poses(self.poses[sequence][index+1])
+        pose2 = self.get_ground_6d_poses(self.poses[sequence][next_index])
         odom = pose2 - pose1
         if self.transform is not None:
             img1 = self.transform(img1)
