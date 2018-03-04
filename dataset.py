@@ -18,6 +18,7 @@ class VisualOdometryDataLoader(torch.utils.data.Dataset):
         self.base_path = datapath
         # self.sequences = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21']
         self.sequences = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10']
+        # self.sequences = ['01']
 
         # self.timestamps = self.load_timestamps()
         self.size = 0
@@ -66,7 +67,7 @@ class VisualOdometryDataLoader(torch.utils.data.Dataset):
 
         img1 = self.get_image(self.sequences[sequence], index)
         img2 = self.get_image(self.sequences[sequence], index+1)
-        odom = self.get_ground_6d_poses(self.poses[sequence][index])
+        odom = self.get_ground_6d_poses(self.poses[sequence][index+1] - self.poses[sequence][index])
         if self.transform is not None:
             img1 = self.transform(img1)
             img2 = self.transform(img2)
