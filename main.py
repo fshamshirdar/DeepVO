@@ -58,9 +58,9 @@ def train_model(train_loader, criterion, optimizer, epoch):
             loss = criterion(estimated_odometry, odometry_batch)
 
             # compute gradient and do optimizer step
-            #optimizer.zero_grad()
-            #loss.backward()
-            #optimizer.step()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
             print (loss)
 
