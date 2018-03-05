@@ -25,7 +25,7 @@ class DeepVONet(nn.Module):
         self.relu5_1 = nn.ReLU(inplace=True)
         self.conv6 = nn.Conv2d (512, 1024, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
         self.lstm1 = nn.LSTMCell(20*6*1024, 100)
-        self.lstm2 = nn.LSTMCell(100, 100, 2)
+        self.lstm2 = nn.LSTMCell(100, 100)
         self.fc = nn.Linear(in_features=100, out_features=6)
 
     def forward(self, x, hidden1, hidden2):
@@ -43,8 +43,8 @@ class DeepVONet(nn.Module):
         x = self.relu4_1(x)
         x = self.conv5(x)
         x = self.relu5(x)
-#        x = self.conv5_1(x)
-#        x = self.relu5_1(x)
+        x = self.conv5_1(x)
+        x = self.relu5_1(x)
         x = self.conv6(x)
         x = x.view(x.size(0), 20 * 6 * 1024)
         x, hidden1_n = self.lstm1(x, hidden1)
