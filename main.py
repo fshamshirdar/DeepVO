@@ -31,7 +31,6 @@ def train_model(train_loader, odometrynet, criterion, optimizer, epoch):
 #        axarr[0,1].imshow(image2[0].data.cpu().numpy().transpose((1, 2, 0)))
 #        plt.show()
 
-
         # compute output
         # estimated_odometry = odometrynet(image1, image2)
         # loss = criterion(estimated_odometry, odometry)
