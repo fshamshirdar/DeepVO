@@ -31,11 +31,15 @@ def train_model(train_loader, odometrynet, criterion, optimizer, epoch):
 #        axarr[0,1].imshow(image2[0].data.cpu().numpy().transpose((1, 2, 0)))
 #        plt.show()
 
-        # compute output
-        estimated_odometry = odometrynet(image1, image2)
-        print (odometry - estimated_odometry)
 
-        loss = criterion(estimated_odometry, odometry)
+        # compute output
+        # estimated_odometry = odometrynet(image1, image2)
+        # loss = criterion(estimated_odometry, odometry)
+
+        estimated_yaw = odometrynet(image1, image2)
+        print (odometry - estimated_yaw)
+
+        loss = criterion(estimated_yaw, odometry)
 
         # compute gradient and do optimizer step
         optimizer.zero_grad()

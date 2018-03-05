@@ -16,7 +16,8 @@ class OdometryNet(nn.Module):
         self.fc7 = nn.Linear(in_features=2 * 9216, out_features=4096)
         self.relu7 = nn.ReLU(inplace=True)
         self.drop7 = nn.Dropout(p=0.5, inplace=True)
-        self.fc8 = nn.Linear(in_features=4096, out_features=6)
+        # self.fc8 = nn.Linear(in_features=4096, out_features=6)
+        self.fc8 = nn.Linear(in_features=4096, out_features=1)
 
 #        self.init_weights(3e-3)
 

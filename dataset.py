@@ -73,22 +73,19 @@ class VisualOdometryDataLoader(torch.utils.data.Dataset):
 
         img1 = self.get_image(self.sequences[sequence], index)
         img2 = self.get_image(self.sequences[sequence], next_index)
-        pose1 = self.get_ground_6d_poses(self.poses[sequence][index])
-        pose2 = self.get_ground_6d_poses(self.poses[sequence][next_index])
+        pose1 = self.get6DoFPose(self.poses[sequence][index])
+        pose2 = self.get6DoFPose(self.poses[sequence][next_index])
         odom = pose2 - pose1
         if self.transform is not None:
             img1 = self.transform(img1)
             img2 = self.transform(img2)
 
-        return img1, img2, odom
+        return img1, img2, np.asarray([odom[5]])
 
     def __len__(self):
         return self.size-len(self.sequences)
 
     def isRotationMatrix(self, R):
-        """ Checks if a matrix is a valid rotation matrix
-            referred from https://www.learnopencv.com/rotation-matrix-to-euler-angles/
-        """
         Rt = np.transpose(R)
         shouldBeIdentity = np.dot(Rt, R)
         I = np.identity(3, dtype = R.dtype)
@@ -96,9 +93,6 @@ class VisualOdometryDataLoader(torch.utils.data.Dataset):
         return n < 1e-6
 
     def rotationMatrixToEulerAngles(self, R):
-        """ calculates rotation matrix to euler angles
-            referred from https://www.learnopencv.com/rotation-matrix-to-euler-angles
-        """
         assert(self.isRotationMatrix(R))
         sy = math.sqrt(R[0,0] * R[0,0] +  R[1,0] * R[1,0])
         singular = sy < 1e-6
@@ -114,8 +108,7 @@ class VisualOdometryDataLoader(torch.utils.data.Dataset):
 
         return np.array([x, y, z], dtype=np.float32)
 
-    def get_ground_6d_poses(self, p):
-        """ For 6dof pose representaion """
+    def get6DoFPose(self, p):
         pos = np.array([p[3], p[7], p[11]])
         R = np.array([[p[0], p[1], p[2]], [p[4], p[5], p[6]], [p[8], p[9], p[10]]])
         angles = self.rotationMatrixToEulerAngles(R)
