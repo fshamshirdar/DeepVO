@@ -77,7 +77,7 @@ class VisualOdometryDataLoader(torch.utils.data.Dataset):
         for i in range(index, index+self.trajectory_length):
             img1 = self.get_image(self.sequences[sequence], i)
             img2 = self.get_image(self.sequences[sequence], i+1)
-            pose1 = self.get6DoFPose(self.poses[sequence][i])
+            pose1 = self.get6DoFPose(self.poses[sequence][index])
             pose2 = self.get6DoFPose(self.poses[sequence][i+1])
             odom = pose2 - pose1
             if self.transform is not None:
