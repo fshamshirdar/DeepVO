@@ -12,43 +12,59 @@ import torch.optim as optim
 from torchvision import transforms
 from torch.autograd import Variable
 
-from placenet import PlaceNet
-from odometrynet import OdometryNet
+from deepvonet import DeepVONet
 from dataset import VisualOdometryDataLoader
 
-model = PlaceNet()
+model = DeepVONet()
+FLOAT = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
 
-def train_model(train_loader, odometrynet, criterion, optimizer, epoch):
+def to_tensor(ndarray, volatile=False, requires_grad=False, dtype=FLOAT):
+    return Variable(
+        torch.from_numpy(ndarray), volatile=volatile, requires_grad=requires_grad
+    ).type(dtype)
+
+def train_model(train_loader, criterion, optimizer, epoch):
     # switch to train mode
-    odometrynet.train()
-    for batch_idx, (image1, image2, odometry) in enumerate(train_loader):
-        if torch.cuda.is_available():
-            image1, image2, odometry = image1.cuda(), image2.cuda(), odometry.cuda()
-        image1, image2, odometry = Variable(image1), Variable(image2), Variable(odometry)
+    for batch_idx, (images_stacked, odometries_stacked) in enumerate(train_loader):
+        images_stacked = list(map(list, zip(*images_stacked))) # Transpose so that timesteps are packed together
+        odometries_stacked = list(map(list, zip(*odometries_stacked))) # Transpose so that timesteps are packed together
 
-#        f, axarr = plt.subplots(2,2)
-#        axarr[0,0].imshow(image1[0].data.cpu().numpy().transpose((1, 2, 0)))
-#        axarr[0,1].imshow(image2[0].data.cpu().numpy().transpose((1, 2, 0)))
-#        plt.show()
+        hidden_state1 = (Variable(torch.zeros(32, 100)).type(FLOAT),
+                        Variable(torch.zeros(32, 100)).type(FLOAT)) # TODO: fix initial hidden state
+        hidden_state2 = (Variable(torch.zeros(32, 100)).type(FLOAT),
+                        Variable(torch.zeros(32, 100)).type(FLOAT)) # TODO: fix initial hidden state
+        for t in range(10):
+            images_batch = np.stack((image_stacked for image_stacked in images_stacked[t]))
+            odometry_batch = np.stack((odometry_stacked for odometry_stacked in odometries_stacked[t]))
 
+            images_batch = to_tensor(images_batch)
+            odometry_batch = to_tensor(odometry_batch)
 
-        # compute output
-        # estimated_odometry = odometrynet(image1, image2)
-        # loss = criterion(estimated_odometry, odometry)
+            if torch.cuda.is_available():
+                images_batch, odometry_batch = images_batch.cuda(), odometry_batch.cuda()
 
-        estimated_yaw = odometrynet(image1, image2)
-        print (odometry - estimated_yaw)
+#            images_batch, odometry_batch = Variable(images_batch), Variable(odometry_batch)
 
-        loss = criterion(estimated_yaw, odometry)
+#            plt.imshow(images_stacked[0][0].data.cpu().numpy().transpose(1, 2, 0))
+#            plt.show()
 
-        # compute gradient and do optimizer step
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+#            f, axarr = plt.subplots(2,2)
+#            axarr[0,0].imshow(image1[0].data.cpu().numpy().transpose((1, 2, 0)))
+#            axarr[0,1].imshow(image2[0].data.cpu().numpy().transpose((1, 2, 0)))
+#            plt.show()
 
-        print (loss)
+            # compute output
+            estimated_odometry, hidden_state1, hidden_state2 = model(images_batch, hidden_state1, hidden_state2)
+            loss = criterion(estimated_odometry, odometry_batch)
 
-def train(odometrynet, datapath, checkpoint_path, epochs, args):
+            # compute gradient and do optimizer step
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            print (loss)
+
+def train(datapath, checkpoint_path, epochs, args):
 #    model.train()
     model.training = False
 
@@ -56,10 +72,10 @@ def train(odometrynet, datapath, checkpoint_path, epochs, args):
     train_loader = torch.utils.data.DataLoader(VisualOdometryDataLoader(datapath, transform=preprocess), batch_size=args.bsize, shuffle=True, **kwargs)
 
     criterion = torch.nn.MSELoss()
-    optimizer = optim.SGD(odometrynet.parameters(), lr=args.lr, momentum=args.momentum)
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
     for epoch in range(1, epochs + 1):
         # train for one epoch
-        train_model(train_loader, odometrynet, criterion, optimizer, epoch)
+        train_model(train_loader, criterion, optimizer, epoch)
 #        # evaluate on validation set
 #        acc = test(test_loader, tripletnet, criterion, epoch)
 #
@@ -68,11 +84,11 @@ def train(odometrynet, datapath, checkpoint_path, epochs, args):
 #        best_acc = max(acc, best_acc)
         state = {
             'epoch': epoch + 1,
-            'state_dict': odometrynet.state_dict(),
+            'state_dict': model.state_dict(),
         }
         torch.save(state, os.path.join(checkpoint_path, "checkpoint_{}.pth".format(epoch)))
 
-def test(odometrynet, datapath, preprocess):
+def test(datapath, preprocess):
     model.eval()
     model.training = False
 
@@ -124,7 +140,6 @@ if __name__ == "__main__":
     parser.add_argument('--epsilon', default=50000, type=int, help='linear decay of exploration policy')
     parser.add_argument('--checkpoint_path', default=None, type=str, help='Checkpoint path')
     parser.add_argument('--checkpoint', default=None, type=str, help='Checkpoint')
-    parser.add_argument('--place_checkpoint', default=None, type=str, help='Place Checkpoint')
     args = parser.parse_args()
 
     normalize = transforms.Normalize(
@@ -134,28 +149,22 @@ if __name__ == "__main__":
     )
 
     preprocess = transforms.Compose([
-        transforms.Resize(227),
-        transforms.CenterCrop(227),
+        transforms.Resize((384, 1280)),
+        transforms.CenterCrop((384, 1280)),
         transforms.ToTensor(),
-        normalize
+        # normalize
     ])
 
-    place_checkpoint = torch.load(args.place_checkpoint)
-    model.load_state_dict(place_checkpoint['state_dict'])
+    if args.checkpoint is not None:
+        checkpoint = torch.load(args.checkpoint)
+        model.load_state_dict(checkpoint['state_dict'])
     if torch.cuda.is_available():
         model.cuda()
 
-    odometrynet = OdometryNet(model)
-    if args.checkpoint is not None:
-        checkpoint = torch.load(args.checkpoint)
-        odometrynet.load_state_dict(checkpoint['state_dict'])
-    if torch.cuda.is_available():
-        odometrynet.cuda()
-
     args = parser.parse_args()
     if args.mode == 'train':
-        train(odometrynet, args.datapath, args.checkpoint_path, args.train_iter, args)
+        train(args.datapath, args.checkpoint_path, args.train_iter, args)
     elif args.mode == 'test':
-        test(odometrynet, args.datapath, preprocess)
+        test(args.datapath, preprocess)
     else:
         raise RuntimeError('undefined mode {}'.format(args.mode))

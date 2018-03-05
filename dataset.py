@@ -10,7 +10,7 @@ import torch.utils.data
 import torchvision.transforms as transforms
 
 def default_image_loader(path):
-    return Image.open(path).convert('RGB')
+    return Image.open(path).convert('RGB') #.transpose(0, 2, 1)
 
 class VisualOdometryDataLoader(torch.utils.data.Dataset):
     def __init__(self, datapath, transform=None,
@@ -24,6 +24,7 @@ class VisualOdometryDataLoader(torch.utils.data.Dataset):
         self.size = 0
         self.sizes = []
         self.poses = self.load_poses()
+        self.trajectory_length = 10
 
         self.transform = transform
         self.loader = loader
@@ -55,32 +56,38 @@ class VisualOdometryDataLoader(torch.utils.data.Dataset):
 
     def get_image(self, sequence, index):
         image_path = os.path.join(self.base_path, 'sequences', sequence, 'image_2', '%06d' % index + '.png')
-        return self.loader(image_path)
+        image = self.loader(image_path)
+        return image
 
     def __getitem__(self, index):
         sequence = 0
         sequence_size = 0
         for size in self.sizes:
-            if index < size-1:
+            if index < size-self.trajectory_length:
                 sequence_size = size
                 break
-            index = index - (size-1)
+            index = index - (size-self.trajectory_length)
             sequence = sequence + 1
+        
+        if (sequence >= len(self.sequences)):
+            sequence = 0
 
-        next_index = random.randint(index-10,index+10)
-        if next_index > size-1 or next_index < 0:
-            next_index = index+1
+        images_stacked = []
+        odometries = []
+        for i in range(index, index+self.trajectory_length):
+            img1 = self.get_image(self.sequences[sequence], i)
+            img2 = self.get_image(self.sequences[sequence], i+1)
+            pose1 = self.get6DoFPose(self.poses[sequence][i])
+            pose2 = self.get6DoFPose(self.poses[sequence][i+1])
+            odom = pose2 - pose1
+            if self.transform is not None:
+                img1 = self.transform(img1)
+                img2 = self.transform(img2)
 
-        img1 = self.get_image(self.sequences[sequence], index)
-        img2 = self.get_image(self.sequences[sequence], next_index)
-        pose1 = self.get6DoFPose(self.poses[sequence][index])
-        pose2 = self.get6DoFPose(self.poses[sequence][next_index])
-        odom = pose2 - pose1
-        if self.transform is not None:
-            img1 = self.transform(img1)
-            img2 = self.transform(img2)
+            images_stacked.append(np.concatenate([img1, img2], axis=0))
+            odometries.append(odom)
 
-        return img1, img2, np.asarray([odom[5]])
+        return np.asarray(images_stacked), np.asarray(odometries)
 
     def __len__(self):
         return self.size-len(self.sequences)
