@@ -15,7 +15,7 @@ from torch.autograd import Variable
 from deepvonet import DeepVONet
 from dataset import VisualOdometryDataLoader
 
-model = DeepVONet()
+USE_CUDA = torch.cuda.is_available()
 FLOAT = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
 
 def to_tensor(ndarray, volatile=False, requires_grad=False, dtype=FLOAT):
@@ -23,28 +23,21 @@ def to_tensor(ndarray, volatile=False, requires_grad=False, dtype=FLOAT):
         torch.from_numpy(ndarray), volatile=volatile, requires_grad=requires_grad
     ).type(dtype)
 
-def train_model(train_loader, criterion, optimizer, epoch):
+def train_model(model, train_loader, criterion, optimizer, epoch, trajectory_length):
     # switch to train mode
     for batch_idx, (images_stacked, odometries_stacked) in enumerate(train_loader):
-        images_stacked = list(map(list, zip(*images_stacked))) # Transpose so that timesteps are packed together
-        odometries_stacked = list(map(list, zip(*odometries_stacked))) # Transpose so that timesteps are packed together
+        if USE_CUDA:
+            images_stacked, odometries_stacked = images_stacked.cuda(), odometries_stacked.cuda()
+        images_stacked = images_stacked.permute(1, 0, 2, 3, 4)
+        images_stacked, odometries_stacked = Variable(images_stacked), Variable(odometries_stacked)
 
-        hidden_state1 = (Variable(torch.zeros(32, 100)).type(FLOAT),
-                        Variable(torch.zeros(32, 100)).type(FLOAT)) # TODO: fix initial hidden state
-        hidden_state2 = (Variable(torch.zeros(32, 100)).type(FLOAT),
-                        Variable(torch.zeros(32, 100)).type(FLOAT)) # TODO: fix initial hidden state
-        for t in range(10):
-            images_batch = np.stack((image_stacked for image_stacked in images_stacked[t]))
-            odometry_batch = np.stack((odometry_stacked for odometry_stacked in odometries_stacked[t]))
+        estimated_odometries = Variable(torch.zeros(odometries_stacked.shape))
+        estimated_odometries = estimated_odometries.permute(1, 0, 2)
+        if USE_CUDA:
+            estimated_odometries = estimated_odometries.cuda()
 
-            images_batch = to_tensor(images_batch)
-            odometry_batch = to_tensor(odometry_batch)
-
-            if torch.cuda.is_available():
-                images_batch, odometry_batch = images_batch.cuda(), odometry_batch.cuda()
-
-#            images_batch, odometry_batch = Variable(images_batch), Variable(odometry_batch)
-
+        model.reset_hidden_states(zero=True)
+        for t in range(trajectory_length):
 #            plt.imshow(images_stacked[0][0].data.cpu().numpy().transpose(1, 2, 0))
 #            plt.show()
 
@@ -54,17 +47,20 @@ def train_model(train_loader, criterion, optimizer, epoch):
 #            plt.show()
 
             # compute output
-            estimated_odometry, hidden_state1, hidden_state2 = model(images_batch, hidden_state1, hidden_state2)
-            loss = criterion(estimated_odometry, odometry_batch)
+            estimated_odometry = model(images_stacked[t])
+            estimated_odometries[t] = estimated_odometry
 
-            # compute gradient and do optimizer step
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+        estimated_odometries = estimated_odometries.permute(1, 0, 2)
+        loss = criterion(estimated_odometries, odometries_stacked)
 
-            print (loss)
+        # compute gradient and do optimizer step
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-def train(datapath, checkpoint_path, epochs, trajectory_length, args):
+        print (loss)
+
+def train(model, datapath, checkpoint_path, epochs, trajectory_length, args):
 #    model.train()
     model.training = False
 
@@ -75,7 +71,7 @@ def train(datapath, checkpoint_path, epochs, trajectory_length, args):
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
     for epoch in range(1, epochs + 1):
         # train for one epoch
-        train_model(train_loader, criterion, optimizer, epoch)
+        train_model(model, train_loader, criterion, optimizer, epoch, trajectory_length)
 #        # evaluate on validation set
 #        acc = test(test_loader, tripletnet, criterion, epoch)
 #
@@ -88,7 +84,7 @@ def train(datapath, checkpoint_path, epochs, trajectory_length, args):
         }
         torch.save(state, os.path.join(checkpoint_path, "checkpoint_{}.pth".format(epoch)))
 
-def test(datapath, preprocess):
+def test(model, datapath, preprocess):
     model.eval()
     model.training = False
 
@@ -156,16 +152,17 @@ if __name__ == "__main__":
         # normalize
     ])
 
+    model = DeepVONet(args.bsize, USE_CUDA)
     if args.checkpoint is not None:
         checkpoint = torch.load(args.checkpoint)
         model.load_state_dict(checkpoint['state_dict'])
-    if torch.cuda.is_available():
+    if USE_CUDA:
         model.cuda()
 
     args = parser.parse_args()
     if args.mode == 'train':
-        train(args.datapath, args.checkpoint_path, args.train_iter, args.trajectory_length, args)
+        train(model, args.datapath, args.checkpoint_path, args.train_iter, args.trajectory_length, args)
     elif args.mode == 'test':
-        test(args.datapath, preprocess)
+        test(model, args.datapath, preprocess)
     else:
         raise RuntimeError('undefined mode {}'.format(args.mode))

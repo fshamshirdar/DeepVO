@@ -2,10 +2,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Function
+from torch.autograd import Variable
 
 class DeepVONet(nn.Module):
-    def __init__(self):
+    def __init__(self, batch_size, use_cuda=True):
         super(DeepVONet, self).__init__()
+
+        self.batch_size = batch_size
+        self.use_cuda = use_cuda
 
         self.conv1 = nn.Conv2d(6, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3))
         self.relu1 = nn.ReLU(inplace=True)
@@ -28,7 +32,27 @@ class DeepVONet(nn.Module):
         self.lstm2 = nn.LSTMCell(100, 100)
         self.fc = nn.Linear(in_features=100, out_features=6)
 
-    def forward(self, x, hidden1, hidden2):
+        self.reset_hidden_states()
+
+    def reset_hidden_states(self, zero=True):
+        if zero == True:
+            self.hx1 = Variable(torch.zeros(self.batch_size, 100))
+            self.cx1 = Variable(torch.zeros(self.batch_size, 100))
+            self.hx2 = Variable(torch.zeros(self.batch_size, 100))
+            self.cx2 = Variable(torch.zeros(self.batch_size, 100))
+        else:
+            self.hx1 = Variable(self.hx1.data)
+            self.cx1 = Variable(self.cx1.data)
+            self.hx2 = Variable(self.hx2.data)
+            self.cx2 = Variable(self.cx2.data)
+
+        if self.use_cuda == True:
+            self.hx1 = self.hx1.cuda()
+            self.cx1 = self.cx1.cuda()
+            self.hx2 = self.hx2.cuda()
+            self.cx2 = self.cx2.cuda()
+
+    def forward(self, x):
         x = self.conv1(x)
         x = self.relu1(x)
         x = self.conv2(x)
@@ -47,7 +71,9 @@ class DeepVONet(nn.Module):
         x = self.relu5_1(x)
         x = self.conv6(x)
         x = x.view(x.size(0), 20 * 6 * 1024)
-        x, hidden1_n = self.lstm1(x, hidden1)
-        x, hidden2_n = self.lstm2(x, hidden2)
+        self.hx1, self.cx1 = self.lstm1(x, (self.hx1, self.cx1))
+        x = self.hx1
+        self.hx2, self.cx2 = self.lstm2(x, (self.hx2, self.cx2))
+        x = self.hx2
         x = self.fc(x)
-        return x, hidden1_n, hidden2_n
+        return x
