@@ -17,6 +17,7 @@ from dataset import VisualOdometryDataLoader
 
 USE_CUDA = torch.cuda.is_available()
 FLOAT = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
+K = 100.
 
 def to_tensor(ndarray, volatile=False, requires_grad=False, dtype=FLOAT):
     return Variable(
@@ -51,7 +52,7 @@ def train_model(model, train_loader, criterion, optimizer, epoch, trajectory_len
             estimated_odometries[t] = estimated_odometry
 
         estimated_odometries = estimated_odometries.permute(1, 0, 2)
-        loss = criterion(estimated_odometries, odometries_stacked)
+        loss = criterion(estimated_odometries[:,:,:3], odometries_stacked[:,:,:3]) + K *criterion(estimated_odometries[:,:,3:], odometries_stacked[:,:,3:])
 
         # compute gradient and do optimizer step
         optimizer.zero_grad()
