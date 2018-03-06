@@ -74,7 +74,7 @@ def train(odometrynet, datapath, checkpoint_path, epochs, preprocess, args):
 def test_model(test_loader, odometrynet):
     # switch to test mode
     odometrynet.eval()
-    for batch_idx, (image1, image2, odometry) in enumerate(train_loader):
+    for batch_idx, (image1, image2, odometry) in enumerate(test_loader):
         if torch.cuda.is_available():
             image1, image2, odometry = image1.cuda(), image2.cuda(), odometry.cuda()
         image1, image2, odometry = Variable(image1), Variable(image2), Variable(odometry)
@@ -84,19 +84,50 @@ def test_model(test_loader, odometrynet):
         # loss = criterion(estimated_odometry, odometry)
 
         estimated_yaw = odometrynet(image1, image2)
-        print (odometry - estimated_yaw)
+        print (odometry.data.cpu()[0][0], estimated_yaw.data.cpu()[0][0])
 
 def test(odometrynet, testpath, validation_steps, preprocess):
+    """
     model.eval()
     model.training = False
     odometrynet.eval()
     odometrynet.training = False
 
     kwargs = {'num_workers': 1, 'pin_memory': True} if torch.cuda.is_available() else {}
-    test_loader = torch.utils.data.DataLoader(VisualOdometryDataLoader(datapath, transform=preprocess, test=True), batch_size=args.bsize, shuffle=True, **kwargs)
+    test_loader = torch.utils.data.DataLoader(VisualOdometryDataLoader(testpath, transform=preprocess, test=True), batch_size=args.bsize, shuffle=True, **kwargs)
 
     for epoch in range(1, validation_steps+1):
         test_model(test_loader, odometrynet)
+
+    return
+    """
+
+    odometrynet.eval()
+    odometrynet.training = False
+    with open(os.path.join(testpath, "index.txt"), 'r') as reader:
+        for index in reader:
+            index = index.strip()
+            images_path = []
+            with open(os.path.join(testpath, index, "index.txt"), 'r') as image_reader:
+                for image_path in image_reader:
+                    images_path.append(image_path.strip())
+
+            for image_index in range(len(images_path)-1):
+                image1 = Image.open(os.path.join(testpath, index, images_path[image_index])).convert('RGB')
+                image2 = Image.open(os.path.join(testpath, index, images_path[image_index+1])).convert('RGB')
+                image1_tensor = preprocess(image1)
+                image2_tensor = preprocess(image2)
+
+#                plt.figure()
+#                plt.imshow(image_tensor.cpu().numpy().transpose((1, 2, 0)))
+#                plt.show()
+
+                image1_tensor.unsqueeze_(0)
+                image2_tensor.unsqueeze_(0)
+                image1_variable = Variable(image1_tensor).cuda()
+                image2_variable = Variable(image2_tensor).cuda()
+                odom = odometrynet(image1_variable, image2_variable)
+                print (image_index, image_index+1, odom.data.cpu()[0][0])
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='PyTorch on Place Recognition + Visual Odometry')
