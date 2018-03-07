@@ -52,21 +52,21 @@ def train_model(model, train_loader, criterion, optimizer, epoch, trajectory_len
             estimated_odometries[t] = estimated_odometry
 
         estimated_odometries = estimated_odometries.permute(1, 0, 2)
-        loss = criterion(estimated_odometries[:,:,:3], odometries_stacked[:,:,:3]) + K *criterion(estimated_odometries[:,:,3:], odometries_stacked[:,:,3:])
+        loss = criterion(estimated_odometries[:,:,:3], odometries_stacked[:,:,:3]) + K * criterion(estimated_odometries[:,:,3:], odometries_stacked[:,:,3:])
 
         # compute gradient and do optimizer step
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        print (loss)
+        print (epoch, batch_idx, loss.data.cpu()[0])
 
 def train(model, datapath, checkpoint_path, epochs, trajectory_length, args):
-#    model.train()
-    model.training = False
+    model.train()
+    model.training = True
 
     kwargs = {'num_workers': 1, 'pin_memory': True} if torch.cuda.is_available() else {}
-    train_loader = torch.utils.data.DataLoader(VisualOdometryDataLoader(datapath, trajectory_length=trajectory_length, transform=preprocess), batch_size=args.bsize, shuffle=True, **kwargs)
+    train_loader = torch.utils.data.DataLoader(VisualOdometryDataLoader(datapath, trajectory_length=trajectory_length, transform=preprocess), batch_size=args.bsize, shuffle=True, drop_last=True, **kwargs)
 
     criterion = torch.nn.MSELoss()
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
