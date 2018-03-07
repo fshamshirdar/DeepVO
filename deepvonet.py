@@ -5,11 +5,8 @@ from torch.autograd import Function
 from torch.autograd import Variable
 
 class DeepVONet(nn.Module):
-    def __init__(self, batch_size, use_cuda=True):
+    def __init__(self):
         super(DeepVONet, self).__init__()
-
-        self.batch_size = batch_size
-        self.use_cuda = use_cuda
 
         self.conv1 = nn.Conv2d(6, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3))
         self.relu1 = nn.ReLU(inplace=True)
@@ -34,19 +31,19 @@ class DeepVONet(nn.Module):
 
         self.reset_hidden_states()
 
-    def reset_hidden_states(self, zero=True):
+    def reset_hidden_states(self, size=1, zero=True):
         if zero == True:
-            self.hx1 = Variable(torch.zeros(self.batch_size, 100))
-            self.cx1 = Variable(torch.zeros(self.batch_size, 100))
-            self.hx2 = Variable(torch.zeros(self.batch_size, 100))
-            self.cx2 = Variable(torch.zeros(self.batch_size, 100))
+            self.hx1 = Variable(torch.zeros(size, 100))
+            self.cx1 = Variable(torch.zeros(size, 100))
+            self.hx2 = Variable(torch.zeros(size, 100))
+            self.cx2 = Variable(torch.zeros(size, 100))
         else:
             self.hx1 = Variable(self.hx1.data)
             self.cx1 = Variable(self.cx1.data)
             self.hx2 = Variable(self.hx2.data)
             self.cx2 = Variable(self.cx2.data)
 
-        if self.use_cuda == True:
+        if next(self.parameters()).is_cuda == True:
             self.hx1 = self.hx1.cuda()
             self.cx1 = self.cx1.cuda()
             self.hx2 = self.hx2.cuda()

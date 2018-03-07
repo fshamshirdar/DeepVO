@@ -24,7 +24,7 @@ def to_tensor(ndarray, volatile=False, requires_grad=False, dtype=FLOAT):
         torch.from_numpy(ndarray), volatile=volatile, requires_grad=requires_grad
     ).type(dtype)
 
-def train_model(model, train_loader, criterion, optimizer, epoch, trajectory_length):
+def train_model(model, train_loader, criterion, optimizer, epoch, batch_size, trajectory_length):
     # switch to train mode
     for batch_idx, (images_stacked, odometries_stacked) in enumerate(train_loader):
         if USE_CUDA:
@@ -37,7 +37,7 @@ def train_model(model, train_loader, criterion, optimizer, epoch, trajectory_len
         if USE_CUDA:
             estimated_odometries = estimated_odometries.cuda()
 
-        model.reset_hidden_states(zero=True)
+        model.reset_hidden_states(size=batch_size, zero=True)
         for t in range(trajectory_length):
 #            plt.imshow(images_stacked[0][0].data.cpu().numpy().transpose(1, 2, 0))
 #            plt.show()
@@ -72,7 +72,7 @@ def train(model, datapath, checkpoint_path, epochs, trajectory_length, args):
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
     for epoch in range(1, epochs + 1):
         # train for one epoch
-        train_model(model, train_loader, criterion, optimizer, epoch, trajectory_length)
+        train_model(model, train_loader, criterion, optimizer, epoch, args.bsize, trajectory_length)
 #        # evaluate on validation set
 #        acc = test(test_loader, tripletnet, criterion, epoch)
 #
@@ -90,38 +90,31 @@ def test(model, datapath, preprocess):
     model.training = False
 
     with open(os.path.join(datapath, "index.txt"), 'r') as reader:
-        import torch.nn.functional as F
-        reps = []
         for index in reader:
             index = index.strip()
+            images_path = []
             with open(os.path.join(datapath, index, "index.txt"), 'r') as image_reader:
                 for image_path in image_reader:
-                    print (image_path)
-                    image_path = image_path.strip()
-                    image = Image.open(os.path.join(datapath, index, image_path)).convert('RGB')
-                    image_tensor = preprocess(image)
+                    images_path.append(image_path.strip())
 
-#                    plt.figure()
-#                    plt.imshow(image_tensor.cpu().numpy().transpose((1, 2, 0)))
-#                    plt.show()
+            model.reset_hidden_states(size=1, zero=True)
+            for image_index in range(len(images_path)-1):
+                model.reset_hidden_states(size=1, zero=False)
+                image1 = Image.open(os.path.join(datapath, index, images_path[image_index])).convert('RGB')
+                image2 = Image.open(os.path.join(datapath, index, images_path[image_index+1])).convert('RGB')
+                image1_tensor = preprocess(image1)
+                image2_tensor = preprocess(image2)
 
-                    image_tensor.unsqueeze_(0)
-                    image_variable = Variable(image_tensor).cuda()
-                    features = model(image_variable)
-                    reps.append(features.data.cpu())
+                # plt.figure()
+                # plt.imshow(images_stacked.cpu().numpy().transpose((1, 2, 0)))
+                # plt.show()
 
-                for i in range(len(reps)):
-                    print ("\n\n")
-                    for j in range(len(reps)):
-                        # d = np.asarray(reps[j] - reps[i])
-                        # similarity = np.linalg.norm(d)
-                        # print (i, j, similarity)
-
-                        similarity = F.pairwise_distance(reps[j], reps[i], 2)
-                        print (i, j, similarity[0][0])
-
-                        # similarity = F.cosine_similarity(reps[j], reps[i])
-                        # print (i, j, similarity[0])
+                images_stacked = torch.from_numpy(np.concatenate([image1_tensor, image2_tensor], axis=0))
+                images_stacked.unsqueeze_(0)
+                images_stacked = Variable(images_stacked).cuda()
+                odom = model(images_stacked)
+                print (image_index, image_index+1, odom.data.cpu())
+                del images_stacked, odom, image1_tensor, image2_tensor
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='PyTorch on Place Recognition + Visual Odometry')
@@ -153,7 +146,7 @@ if __name__ == "__main__":
         # normalize
     ])
 
-    model = DeepVONet(args.bsize, USE_CUDA)
+    model = DeepVONet()
     if args.checkpoint is not None:
         checkpoint = torch.load(args.checkpoint)
         model.load_state_dict(checkpoint['state_dict'])
