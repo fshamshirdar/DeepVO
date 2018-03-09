@@ -164,15 +164,15 @@ if __name__ == "__main__":
 
     normalize = transforms.Normalize(
         #mean=[121.50361069 / 127., 122.37611083 / 127., 121.25987563 / 127.],
-        mean=[1., 1., 1.],
-        std=[1 / 127., 1 / 127., 1 / 127.]
+        mean=[127. / 255., 127. / 255., 127. / 255.],
+        std=[1 / 255., 1 / 255., 1 / 255.]
     )
 
     preprocess = transforms.Compose([
         transforms.Resize((384, 1280)),
         transforms.CenterCrop((384, 1280)),
         transforms.ToTensor(),
-        # normalize
+        normalize
     ])
 
     model = DeepVONet()
