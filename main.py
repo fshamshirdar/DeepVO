@@ -24,35 +24,24 @@ def to_tensor(ndarray, volatile=False, requires_grad=False, dtype=FLOAT):
         torch.from_numpy(ndarray), volatile=volatile, requires_grad=requires_grad
     ).type(dtype)
 
-def train_model(model, train_loader, criterion, optimizer, epoch, batch_size, trajectory_length):
+def train_model(model, train_loader, criterion, optimizer, epoch, batch_size):
     # switch to train mode
-    for batch_idx, (images_stacked, odometries_stacked) in enumerate(train_loader):
+    for batch_idx, (images_stacked, odometries) in enumerate(train_loader):
         if USE_CUDA:
-            images_stacked, odometries_stacked = images_stacked.cuda(), odometries_stacked.cuda()
-        images_stacked = images_stacked.permute(1, 0, 2, 3, 4)
-        images_stacked, odometries_stacked = Variable(images_stacked), Variable(odometries_stacked)
+            images_stacked, odometries = images_stacked.cuda(), odometries.cuda()
+        images_stacked, odometries = Variable(images_stacked), Variable(odometries)
 
-        estimated_odometries = Variable(torch.zeros(odometries_stacked.shape))
-        estimated_odometries = estimated_odometries.permute(1, 0, 2)
-        if USE_CUDA:
-            estimated_odometries = estimated_odometries.cuda()
+#        plt.imshow(images_stacked[0][0].data.cpu().numpy().transpose(1, 2, 0))
+#        plt.show()
 
-        model.reset_hidden_states(size=batch_size, zero=True)
-        for t in range(trajectory_length):
-#            plt.imshow(images_stacked[0][0].data.cpu().numpy().transpose(1, 2, 0))
-#            plt.show()
+#        f, axarr = plt.subplots(2,2)
+#        axarr[0,0].imshow(image1[0].data.cpu().numpy().transpose((1, 2, 0)))
+#        axarr[0,1].imshow(image2[0].data.cpu().numpy().transpose((1, 2, 0)))
+#        plt.show()
 
-#            f, axarr = plt.subplots(2,2)
-#            axarr[0,0].imshow(image1[0].data.cpu().numpy().transpose((1, 2, 0)))
-#            axarr[0,1].imshow(image2[0].data.cpu().numpy().transpose((1, 2, 0)))
-#            plt.show()
-
-            # compute output
-            estimated_odometry = model(images_stacked[t])
-            estimated_odometries[t] = estimated_odometry
-
-        estimated_odometries = estimated_odometries.permute(1, 0, 2)
-        loss = criterion(estimated_odometries[:,:,:3], odometries_stacked[:,:,:3]) + K * criterion(estimated_odometries[:,:,3:], odometries_stacked[:,:,3:])
+        # compute output
+        estimated_odometry = model(images_stacked)
+        loss = criterion(estimated_odometry[:,:3], odometries[:,:3]) + K * criterion(estimated_odometry[:,3:], odometries[:,3:])
 
         # compute gradient and do optimizer step
         optimizer.zero_grad()
@@ -61,18 +50,18 @@ def train_model(model, train_loader, criterion, optimizer, epoch, batch_size, tr
 
         print (epoch, batch_idx, loss.data.cpu()[0])
 
-def train(model, datapath, checkpoint_path, epochs, trajectory_length, args):
+def train(model, datapath, checkpoint_path, epochs, args):
     model.train()
     model.training = True
 
     kwargs = {'num_workers': 1, 'pin_memory': True} if torch.cuda.is_available() else {}
-    train_loader = torch.utils.data.DataLoader(VisualOdometryDataLoader(datapath, trajectory_length=trajectory_length, transform=preprocess), batch_size=args.bsize, shuffle=True, drop_last=True, **kwargs)
+    train_loader = torch.utils.data.DataLoader(VisualOdometryDataLoader(datapath, transform=preprocess), batch_size=args.bsize, shuffle=True, drop_last=True, **kwargs)
 
     criterion = torch.nn.MSELoss()
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
     for epoch in range(1, epochs + 1):
         # train for one epoch
-        train_model(model, train_loader, criterion, optimizer, epoch, args.bsize, trajectory_length)
+        train_model(model, train_loader, criterion, optimizer, epoch, args.bsize)
 #        # evaluate on validation set
 #        acc = test(test_loader, tripletnet, criterion, epoch)
 #
@@ -85,7 +74,8 @@ def train(model, datapath, checkpoint_path, epochs, trajectory_length, args):
         }
         torch.save(state, os.path.join(checkpoint_path, "checkpoint_{}.pth".format(epoch)))
 
-def test_model(model, test_loader, batch_size, trajectory_length):
+def test_model(model, test_loader, batch_size):
+    # TODO: no longer sequencial
     for batch_idx, (images_stacked, odometries_stacked) in enumerate(test_loader):
         if USE_CUDA:
             images_stacked, odometries_stacked = images_stacked.cuda(), odometries_stacked.cuda()
@@ -150,7 +140,6 @@ if __name__ == "__main__":
     parser.add_argument('--mode', default='train', type=str, help='support option: train/test')
     parser.add_argument('--datapath', default='datapath', type=str, help='path KITII odometry dataset')
     parser.add_argument('--bsize', default=32, type=int, help='minibatch size')
-    parser.add_argument('--trajectory_length', default=10, type=int, help='trajectory length')
     parser.add_argument('--lr', type=float, default=0.0001, metavar='LR', help='learning rate (default: 0.0001)')
     parser.add_argument('--momentum', type=float, default=0.5, metavar='M', help='SGD momentum (default: 0.5)')
     parser.add_argument('--tau', default=0.001, type=float, help='moving average for target network')
@@ -164,15 +153,15 @@ if __name__ == "__main__":
 
     normalize = transforms.Normalize(
         #mean=[121.50361069 / 127., 122.37611083 / 127., 121.25987563 / 127.],
-        mean=[1., 1., 1.],
-        std=[1 / 127., 1 / 127., 1 / 127.]
+        mean=[1. / 2., 1. / 2., 1. / 2.],
+        std=[1 / 255., 1 / 255., 1 / 255.]
     )
 
     preprocess = transforms.Compose([
-        transforms.Resize((384, 1280)),
-        transforms.CenterCrop((384, 1280)),
+        transforms.Resize((227, 227)),
+        transforms.CenterCrop((227, 227)),
         transforms.ToTensor(),
-        # normalize
+        normalize
     ])
 
     model = DeepVONet()
@@ -184,7 +173,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     if args.mode == 'train':
-        train(model, args.datapath, args.checkpoint_path, args.train_iter, args.trajectory_length, args)
+        train(model, args.datapath, args.checkpoint_path, args.train_iter, args)
     elif args.mode == 'test':
         test(model, args.datapath, args.trajectory_length, args.validation_steps, preprocess)
     else:

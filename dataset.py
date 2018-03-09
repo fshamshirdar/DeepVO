@@ -13,21 +13,20 @@ def default_image_loader(path):
     return Image.open(path).convert('RGB') #.transpose(0, 2, 1)
 
 class VisualOdometryDataLoader(torch.utils.data.Dataset):
-    def __init__(self, datapath, trajectory_length=10, transform=None, test=False,
+    def __init__(self, datapath, transform=None, test=False,
                  loader=default_image_loader):
         self.base_path = datapath
         if test:
             self.sequences = ['01']
         else:
             # self.sequences = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21']
-            self.sequences = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10']
-            # self.sequences = ['01']
+            # self.sequences = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10']
+            self.sequences = ['01']
 
         # self.timestamps = self.load_timestamps()
         self.size = 0
         self.sizes = []
         self.poses = self.load_poses()
-        self.trajectory_length = trajectory_length
 
         self.transform = transform
         self.loader = loader
@@ -43,20 +42,6 @@ class VisualOdometryDataLoader(torch.utils.data.Dataset):
                 self.sizes.append(len(poses))
         return all_poses
 
-    """ 
-    def load_timestamps(self, sequence_path):
-        for sequence in self.sequences:
-            timestamp_file = os.path.join(self.sequence_path, 'times.txt')
-
-            # Read and parse the timestamps
-            timestamps = []
-            with open(timestamp_file, 'r') as f:
-                for line in f.readlines():
-                    t = datetime.timedelta(seconds=float(line))
-                    timestamps.append(t)
-            return timestamps
-    """
-
     def get_image(self, sequence, index):
         image_path = os.path.join(self.base_path, 'sequences', sequence, 'image_2', '%06d' % index + '.png')
         image = self.loader(image_path)
@@ -66,34 +51,29 @@ class VisualOdometryDataLoader(torch.utils.data.Dataset):
         sequence = 0
         sequence_size = 0
         for size in self.sizes:
-            if index < size-self.trajectory_length:
+            if index < size-1:
                 sequence_size = size
                 break
-            index = index - (size-self.trajectory_length)
+            index = index - (size-1)
             sequence = sequence + 1
         
         if (sequence >= len(self.sequences)):
             sequence = 0
 
-        images_stacked = []
-        odometries = []
-        for i in range(index, index+self.trajectory_length):
-            img1 = self.get_image(self.sequences[sequence], i)
-            img2 = self.get_image(self.sequences[sequence], i+1)
-            pose1 = self.get6DoFPose(self.poses[sequence][i])
-            pose2 = self.get6DoFPose(self.poses[sequence][i+1])
-            odom = pose2 - pose1
-            if self.transform is not None:
-                img1 = self.transform(img1)
-                img2 = self.transform(img2)
+        img1 = self.get_image(self.sequences[sequence], index)
+        img2 = self.get_image(self.sequences[sequence], index+1)
+        pose1 = self.get6DoFPose(self.poses[sequence][index])
+        pose2 = self.get6DoFPose(self.poses[sequence][index+1])
+        odom = pose2 - pose1
+        if self.transform is not None:
+            img1 = self.transform(img1)
+            img2 = self.transform(img2)
 
-            images_stacked.append(np.concatenate([img1, img2], axis=0))
-            odometries.append(odom)
-
-        return np.asarray(images_stacked), np.asarray(odometries)
+        images_stacked = np.concatenate([img1, img2], axis=0)
+        return images_stacked, odom
 
     def __len__(self):
-        return self.size - (self.trajectory_length * len(self.sequences))
+        return self.size - len(self.sequences)
 
     def isRotationMatrix(self, R):
         Rt = np.transpose(R)

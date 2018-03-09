@@ -25,29 +25,10 @@ class DeepVONet(nn.Module):
         self.conv5_1 = nn.Conv2d (512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
         self.relu5_1 = nn.ReLU(inplace=True)
         self.conv6 = nn.Conv2d (512, 1024, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
-        self.lstm1 = nn.LSTMCell(20*6*1024, 100)
-        self.lstm2 = nn.LSTMCell(100, 100)
-        self.fc = nn.Linear(in_features=100, out_features=6)
-
-        self.reset_hidden_states()
-
-    def reset_hidden_states(self, size=1, zero=True):
-        if zero == True:
-            self.hx1 = Variable(torch.zeros(size, 100))
-            self.cx1 = Variable(torch.zeros(size, 100))
-            self.hx2 = Variable(torch.zeros(size, 100))
-            self.cx2 = Variable(torch.zeros(size, 100))
-        else:
-            self.hx1 = Variable(self.hx1.data)
-            self.cx1 = Variable(self.cx1.data)
-            self.hx2 = Variable(self.hx2.data)
-            self.cx2 = Variable(self.cx2.data)
-
-        if next(self.parameters()).is_cuda == True:
-            self.hx1 = self.hx1.cuda()
-            self.cx1 = self.cx1.cuda()
-            self.hx2 = self.hx2.cuda()
-            self.cx2 = self.cx2.cuda()
+        self.fc7 = nn.Linear(in_features=4 * 4 * 1024, out_features=1000)
+        self.relu7 = nn.ReLU(inplace=True)
+        self.drop7 = nn.Dropout(p=0.5, inplace=True)
+        self.fc8 = nn.Linear(in_features=1000, out_features=6)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -67,10 +48,10 @@ class DeepVONet(nn.Module):
         x = self.conv5_1(x)
         x = self.relu5_1(x)
         x = self.conv6(x)
-        x = x.view(x.size(0), 20 * 6 * 1024)
-        self.hx1, self.cx1 = self.lstm1(x, (self.hx1, self.cx1))
-        x = self.hx1
-        self.hx2, self.cx2 = self.lstm2(x, (self.hx2, self.cx2))
-        x = self.hx2
-        x = self.fc(x)
+        x = x.view(x.size(0), 4 * 4 * 1024)
+        x = self.fc7(x)
+        x = self.relu7(x)
+        if (self.training):
+            x = self.drop7(x)
+        x = self.fc8(x)
         return x
