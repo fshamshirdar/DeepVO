@@ -85,10 +85,37 @@ def train(model, datapath, checkpoint_path, epochs, trajectory_length, args):
         }
         torch.save(state, os.path.join(checkpoint_path, "checkpoint_{}.pth".format(epoch)))
 
-def test(model, datapath, preprocess):
+def test_model(model, test_loader, batch_size, trajectory_length):
+    for batch_idx, (images_stacked, odometries_stacked) in enumerate(test_loader):
+        if USE_CUDA:
+            images_stacked, odometries_stacked = images_stacked.cuda(), odometries_stacked.cuda()
+        images_stacked = images_stacked.permute(1, 0, 2, 3, 4)
+        images_stacked, odometries_stacked = Variable(images_stacked), Variable(odometries_stacked)
+
+        estimated_odometries = Variable(torch.zeros(odometries_stacked.shape))
+        estimated_odometries = estimated_odometries.permute(1, 0, 2)
+        if USE_CUDA:
+            estimated_odometries = estimated_odometries.cuda()
+
+        model.reset_hidden_states(size=batch_size, zero=True)
+        for t in range(trajectory_length):
+            estimated_odometry = model(images_stacked[t])
+            estimated_odometries[t] = estimated_odometry
+
+        estimated_odometries = estimated_odometries.permute(1, 0, 2)
+        print (estimated_odometries, odometries_stacked)
+
+def test(model, datapath, trajectory_length, validation_steps, preprocess):
     model.eval()
     model.training = False
 
+    kwargs = {'num_workers': 1, 'pin_memory': True} if torch.cuda.is_available() else {}
+    test_loader = torch.utils.data.DataLoader(VisualOdometryDataLoader(datapath, trajectory_length=trajectory_length, transform=preprocess, test=True), batch_size=1, shuffle=True, **kwargs)
+ 
+    for epoch in range(1, validation_steps+1):
+        test_model(model, test_loader, 1, trajectory_length)
+
+    """
     with open(os.path.join(datapath, "index.txt"), 'r') as reader:
         for index in reader:
             index = index.strip()
@@ -115,6 +142,7 @@ def test(model, datapath, preprocess):
                 odom = model(images_stacked)
                 print (image_index, image_index+1, odom.data.cpu())
                 del images_stacked, odom, image1_tensor, image2_tensor
+    """
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='PyTorch on Place Recognition + Visual Odometry')
@@ -128,6 +156,7 @@ if __name__ == "__main__":
     parser.add_argument('--tau', default=0.001, type=float, help='moving average for target network')
     parser.add_argument('--debug', dest='debug', action='store_true')
     parser.add_argument('--train_iter', default=20000000, type=int, help='train iters each timestep')
+    parser.add_argument('--validation_steps', default=100, type=int, help='test iters each timestep')
     parser.add_argument('--epsilon', default=50000, type=int, help='linear decay of exploration policy')
     parser.add_argument('--checkpoint_path', default=None, type=str, help='Checkpoint path')
     parser.add_argument('--checkpoint', default=None, type=str, help='Checkpoint')
@@ -157,6 +186,6 @@ if __name__ == "__main__":
     if args.mode == 'train':
         train(model, args.datapath, args.checkpoint_path, args.train_iter, args.trajectory_length, args)
     elif args.mode == 'test':
-        test(model, args.datapath, preprocess)
+        test(model, args.datapath, args.trajectory_length, args.validation_steps, preprocess)
     else:
         raise RuntimeError('undefined mode {}'.format(args.mode))
