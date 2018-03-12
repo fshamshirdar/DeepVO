@@ -108,6 +108,7 @@ def test(odometrynet, testpath, validation_steps, preprocess):
         for index in reader:
             index = index.strip()
             images_path = []
+            print (index)
             with open(os.path.join(testpath, index, "index.txt"), 'r') as image_reader:
                 for image_path in image_reader:
                     images_path.append(image_path.strip())

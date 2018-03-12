@@ -16,8 +16,11 @@ class OdometryNet(nn.Module):
         self.fc7 = nn.Linear(in_features=2 * 9216, out_features=4096)
         self.relu7 = nn.ReLU(inplace=True)
         self.drop7 = nn.Dropout(p=0.5, inplace=True)
-        # self.fc8 = nn.Linear(in_features=4096, out_features=6)
-        self.fc8 = nn.Linear(in_features=4096, out_features=1)
+        self.fc8 = nn.Linear(in_features=4096, out_features=1024)
+        self.relu8 = nn.ReLU(inplace=True)
+        self.drop8 = nn.Dropout(p=0.5, inplace=True)
+        # self.fc9 = nn.Linear(in_features=4096, out_features=6)
+        self.fc9 = nn.Linear(in_features=1024, out_features=1)
 
 #        self.init_weights(3e-3)
 
@@ -35,4 +38,8 @@ class OdometryNet(nn.Module):
         if (self.training):
             x = self.drop7(x)
         x = self.fc8(x)
+        x = self.relu8(x)
+        if (self.training):
+            x = self.drop8(x)
+        x = self.fc9(x)
         return x
