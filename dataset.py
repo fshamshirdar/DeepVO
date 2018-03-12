@@ -20,8 +20,8 @@ class VisualOdometryDataLoader(torch.utils.data.Dataset):
             self.sequences = ['01']
         else:
             # self.sequences = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21']
-            # self.sequences = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10']
-            self.sequences = ['01']
+            self.sequences = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10']
+            # self.sequences = ['01']
 
         # self.timestamps = self.load_timestamps()
         self.size = 0

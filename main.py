@@ -79,31 +79,25 @@ def test_model(model, test_loader, batch_size):
     for batch_idx, (images_stacked, odometries_stacked) in enumerate(test_loader):
         if USE_CUDA:
             images_stacked, odometries_stacked = images_stacked.cuda(), odometries_stacked.cuda()
-        images_stacked = images_stacked.permute(1, 0, 2, 3, 4)
         images_stacked, odometries_stacked = Variable(images_stacked), Variable(odometries_stacked)
 
         estimated_odometries = Variable(torch.zeros(odometries_stacked.shape))
-        estimated_odometries = estimated_odometries.permute(1, 0, 2)
         if USE_CUDA:
             estimated_odometries = estimated_odometries.cuda()
 
-        model.reset_hidden_states(size=batch_size, zero=True)
-        for t in range(trajectory_length):
-            estimated_odometry = model(images_stacked[t])
-            estimated_odometries[t] = estimated_odometry
+        estimated_odometry = model(images_stacked[t])
+        print (estimated_odometry, odometries_stacked)
 
-        estimated_odometries = estimated_odometries.permute(1, 0, 2)
-        print (estimated_odometries, odometries_stacked)
-
-def test(model, datapath, trajectory_length, validation_steps, preprocess):
+def test(model, datapath, validation_steps, preprocess):
     model.eval()
     model.training = False
 
+    """
     kwargs = {'num_workers': 1, 'pin_memory': True} if torch.cuda.is_available() else {}
-    test_loader = torch.utils.data.DataLoader(VisualOdometryDataLoader(datapath, trajectory_length=trajectory_length, transform=preprocess, test=True), batch_size=1, shuffle=True, **kwargs)
+    test_loader = torch.utils.data.DataLoader(VisualOdometryDataLoader(datapath, transform=preprocess, test=True), batch_size=1, shuffle=True, **kwargs)
  
     for epoch in range(1, validation_steps+1):
-        test_model(model, test_loader, 1, trajectory_length)
+        test_model(model, test_loader, 1)
 
     """
     with open(os.path.join(datapath, "index.txt"), 'r') as reader:
@@ -114,9 +108,7 @@ def test(model, datapath, trajectory_length, validation_steps, preprocess):
                 for image_path in image_reader:
                     images_path.append(image_path.strip())
 
-            model.reset_hidden_states(size=1, zero=True)
             for image_index in range(len(images_path)-1):
-                model.reset_hidden_states(size=1, zero=False)
                 image1 = Image.open(os.path.join(datapath, index, images_path[image_index])).convert('RGB')
                 image2 = Image.open(os.path.join(datapath, index, images_path[image_index+1])).convert('RGB')
                 image1_tensor = preprocess(image1)
@@ -132,7 +124,6 @@ def test(model, datapath, trajectory_length, validation_steps, preprocess):
                 odom = model(images_stacked)
                 print (image_index, image_index+1, odom.data.cpu())
                 del images_stacked, odom, image1_tensor, image2_tensor
-    """
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='PyTorch on Place Recognition + Visual Odometry')
@@ -140,7 +131,7 @@ if __name__ == "__main__":
     parser.add_argument('--mode', default='train', type=str, help='support option: train/test')
     parser.add_argument('--datapath', default='datapath', type=str, help='path KITII odometry dataset')
     parser.add_argument('--bsize', default=32, type=int, help='minibatch size')
-    parser.add_argument('--lr', type=float, default=0.0001, metavar='LR', help='learning rate (default: 0.0001)')
+    parser.add_argument('--lr', type=float, default=0.001, metavar='LR', help='learning rate (default: 0.0001)')
     parser.add_argument('--momentum', type=float, default=0.5, metavar='M', help='SGD momentum (default: 0.5)')
     parser.add_argument('--weight_decay', type=float, default=1e-4, metavar='M', help='SGD momentum (default: 0.5)')
     parser.add_argument('--tau', default=0.001, type=float, help='moving average for target network')
@@ -176,6 +167,6 @@ if __name__ == "__main__":
     if args.mode == 'train':
         train(model, args.datapath, args.checkpoint_path, args.train_iter, args)
     elif args.mode == 'test':
-        test(model, args.datapath, args.trajectory_length, args.validation_steps, preprocess)
+        test(model, args.datapath, args.validation_steps, preprocess)
     else:
         raise RuntimeError('undefined mode {}'.format(args.mode))
